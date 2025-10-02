@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Sistema de Reservas - Salas de Reuniones v17</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        
+        body {
+            box-sizing: border-box;
+            -webkit-overflow-scrolling: touch;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        input, textarea, select {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        
+        .touch-target {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        
+        .horizontal-scroll {
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        
+        .horizontal-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+        }
+        .time-slot {
+            transition: all 0.2s ease;
+        }
+        .time-slot:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .reserved {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+        .available {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+        .modal-backdrop {
+            backdrop-filter: blur(4px);
+        }
+        .reserved-block {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+        .save-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .save-indicator.show {
+            opacity: 1;
+        }
+        .version-badge {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(99, 102, 241, 0.9);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="version-badge">
+         Versión 17 Pro
+    </div>
+
+    <div id="saveIndicator" class="save-indicator">
+        💾 Sincronizado con Supabase
+    </div>
+
+    
+    <header class="bg-white shadow-lg border-b-4 border-indigo-500 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    <div class="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 sm:p-4 rounded-xl shadow-lg">
+                        <svg class="w-6 h-6 sm:w-10 sm:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                        </svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h1 id="appTitle" class="text-lg sm:text-3xl font-bold text-gray-900 truncate cursor-pointer hover:text-indigo-600 transition-colors" onclick="editAppTitle()" title="Haz clic para editar el nombre">AIRBUS ATHOL</h1>
+                        <input id="appTitleInput" class="hidden text-lg sm:text-3xl font-bold text-gray-900 bg-transparent border-b-2 border-indigo-500 focus:outline-none w-full" onblur="saveAppTitle()" onkeypress="handleTitleKeypress(event)">
+                        <p class="text-xs sm:text-base text-gray-600 hidden sm:block">Sistema avanzado con Supabase en tiempo real</p>
+                    </div>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="exportData()" class="touch-target bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-colors duration-200 shadow-lg hover:shadow-xl text-sm sm:text-base">
+                        <span class="hidden sm:inline">📥 Exportar</span>
+                        <span class="sm:hidden">📥</span>
+                    </button>
+                    <button onclick="showHistoryModal()" class="touch-target bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-colors duration-200 shadow-lg hover:shadow-xl text-sm sm:text-base">
+                        <span class="hidden sm:inline">📊 Historial</span>
+                        <span class="sm:hidden">📊</span>
+                    </button>
+                    <button onclick="showRoomsManagementModal()" class="touch-target bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg font-semibold transition-colors duration-200 shadow-lg hover:shadow-xl text-sm sm:text-base">
+                        <span class="hidden sm:inline">🏢 Salas</span>
+                        <span class="sm:hidden">🏢</span>
+                    </button>
+                    <button onclick="showNewReservationModal()" class="touch-target bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-colors duration-200 shadow-lg hover:shadow-xl text-sm sm:text-base">
+                        <span class="hidden sm:inline">+ Nueva Reserva</span>
+                        <span class="sm:hidden">+</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+       
+        <div class="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-6 sm:mb-8">
+            <div class="space-y-4 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
+                <div class="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:space-x-4">
+                    <div class="col-span-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                        <input type="date" id="dateFilter" class="touch-target w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" onchange="filterReservations()">
+                        <div id="holidayWarning" class="hidden mt-1 p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">
+                            <span class="font-medium">🎉 Día Festivo:</span> <span id="holidayName"></span>
+                        </div>
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Sala</label>
+                        <select id="roomFilter" class="touch-target w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" onchange="filterReservations()">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center justify-center space-x-4 sm:space-x-2 text-xs sm:text-sm">
+                    <div class="flex items-center space-x-1 sm:space-x-2">
+                        <div class="w-3 h-3 sm:w-4 sm:h-4 bg-green-500 rounded"></div>
+                        <span class="text-gray-600">Disponible</span>
+                    </div>
+                    <div class="flex items-center space-x-1 sm:space-x-2">
+                        <div class="w-3 h-3 sm:w-4 sm:h-4 bg-red-500 rounded"></div>
+                        <span class="text-gray-600">Reservado</span>
+                    </div>
+                    <div class="flex items-center space-x-1 sm:space-x-2">
+                        <div class="w-3 h-3 sm:w-4 sm:h-4 bg-gray-400 rounded"></div>
+                        <span class="text-gray-600">Pasado</span>
+                    </div>
+                    <div class="flex items-center space-x-1 sm:space-x-2">
+                        <div class="w-3 h-3 sm:w-4 sm:h-4 bg-orange-500 rounded"></div>
+                        <span class="text-gray-600">Festivo</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="p-4 sm:p-6 border-b border-gray-200">
+                <h2 class="text-xl sm:text-2xl font-bold text-gray-900">Disponibilidad de Salas</h2>
+                <p class="text-sm sm:text-base text-gray-600 mt-1">Toca un horario disponible para reservar (máximo 8 horas continuas)</p>
+                <div class="mt-2 text-xs text-gray-500">
+                    ⚡ <strong>Nuevo v17 con Supabase:</strong> Datos en tiempo real
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto horizontal-scroll">
+                <div class="min-w-full">
+                    <div class="overflow-x-auto horizontal-scroll">
+                        <div class="grid gap-1 p-2 sm:p-4 bg-gray-50 border-b" style="grid-template-columns: 120px repeat(25, minmax(50px, 1fr)); min-width: 1400px;">
+                            <div class="font-semibold text-gray-700 p-2 sm:p-3 text-xs sm:text-sm">Sala</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">08:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">08:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">09:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">09:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">10:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">10:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">11:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">11:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">12:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">12:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">13:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">13:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">14:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">14:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">15:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">15:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">16:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">16:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">17:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">17:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">18:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">18:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">19:00</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">19:30</div>
+                            <div class="font-semibold text-gray-700 p-1 sm:p-2 text-center text-xs">20:00</div>
+                        </div>
+                    </div>
+                    
+                    <div id="roomsGrid" class="divide-y divide-gray-200">
+                        
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <div class="bg-white rounded-xl shadow-lg mt-6 sm:mt-8">
+            <div class="p-4 sm:p-6 border-b border-gray-200">
+                <h2 class="text-xl sm:text-2xl font-bold text-gray-900">Reservas Activas</h2>
+                <p class="text-sm text-gray-600 mt-1">Mostrando reservas confirmadas</p>
+            </div>
+            <div id="reservationsList" class="divide-y divide-gray-200">
+                
+            </div>
+        </div>
+    </div>
+
+    
+    <div id="roomsManagementModal" class="fixed inset-0 bg-black bg-opacity-50 modal-backdrop hidden items-center justify-center z-50 p-4">
+        
+    </div>
+
+    <div id="addEditRoomModal" class="fixed inset-0 bg-black bg-opacity-50 modal-backdrop hidden items-center justify-center z-50 p-4">
+        
+    </div>
+
+    <div id="historyModal" class="fixed inset-0 bg-black bg-opacity-50 modal-backdrop hidden items-center justify-center z-50 p-4">
+        
+    </div>
+
+    <div id="reservationModal" class="fixed inset-0 bg-black bg-opacity-50 modal-backdrop hidden items-center justify-center z-50 p-4">
+        
+    </div>
+
+    <script>
+        
+        const SUPABASE_URL = 'https://hycndeiunnhpwcbjanrz.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5Y25kZWl1bm5ocHdjYmphbnJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxODAwNzQsImV4cCI6MjA3NDc1NjA3NH0.zc5Ja25_7AYz_V7it2NLjYOvzQMeGJzHXMiSKpzbP4U';
+
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('✅ Conexión con Supabase establecida.');
+
+        
+        let reservations = [];
+        let rooms = [];
+        let reservationHistory = [];
+
+        
+        const spanishHolidays = {
+            '2024-01-01': 'Año Nuevo',
+            '2024-01-06': 'Día de Reyes',
+            '2024-03-29': 'Viernes Santo',
+            '2024-04-01': 'Lunes de Pascua',
+            '2024-05-01': 'Día del Trabajo',
+            '2024-08-15': 'Asunción de la Virgen',
+            '2024-10-12': 'Día de la Hispanidad',
+            '2024-11-01': 'Día de Todos los Santos',
+            '2024-12-06': 'Día de la Constitución',
+            '2024-12-08': 'Inmaculada Concepción',
+            '2024-12-25': 'Navidad',
+            '2025-01-01': 'Año Nuevo',
+            '2025-01-06': 'Día de Reyes',
+            '2025-04-18': 'Viernes Santo',
+            '2025-04-21': 'Lunes de Pascua',
+            '2025-05-01': 'Día del Trabajo',
+            '2025-08-15': 'Asunción de la Virgen',
+            '2025-10-12': 'Día de la Hispanidad',
+            '2025-11-01': 'Día de Todos los Santos',
+            '2025-12-06': 'Día de la Constitución',
+            '2025-12-08': 'Inmaculada Concepción',
+            '2025-12-25': 'Navidad'
+        };
+
+        const timeSlots = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00'];
+
+        
+        async function loadInitialData() {
+            console.log('📂 Cargando datos iniciales desde Supabase...');
+
+            try {
+                
+                const { data: salasData, error: salasError } = await supabaseClient
+                    .from('salas')
+                    .select('*');
+
+                if (salasError) {
+                    console.error('❌ Error cargando las salas:', salasError);
+                    showNotification('Error: No se pudieron cargar las salas desde la base de datos.', 'error');
+                    return;
+                }
+                
+                
+                rooms = salasData.map(dbRoom => ({
+                    id: dbRoom.codigo,
+                    name: dbRoom.nombre || `Sala ${dbRoom.codigo}`,
+                    capacity: dbRoom.capacidad,
+                    color: dbRoom.color || 'indigo',
+                    imageUrl: dbRoom.imagen_url,
+                    resources: dbRoom.recursos || []
+                }));
+                console.log('✅ Salas cargadas desde Supabase:', rooms.length);
+
+                
+                const today = new Date().toISOString().split('T')[0];
+                const { data: reservasData, error: reservasError } = await supabaseClient
+                    .from('reservas')
+                    .select('*')
+                    .eq('estado', 'confirmada');
+
+                if (reservasError) {
+                    console.error('❌ Error cargando reservas:', reservasError);
+                } else {
+                    
+                    reservations = reservasData.map(dbReservation => {
+                        
+                        const startMinutes = timeToMinutes(dbReservation.hora_inicio.substring(0, 5));
+                        const endMinutes = timeToMinutes(dbReservation.hora_fin.substring(0, 5));
+                        const duration = (endMinutes - startMinutes) / 60;
+                        
+                        return {
+                            id: dbReservation.id, 
+                            room: `Sala ${dbReservation.sala_codigo}`,
+                            date: dbReservation.fecha,
+                            time: dbReservation.hora_inicio.substring(0, 5),
+                            duration: duration,
+                            requester: dbReservation.solicitante,
+                            purpose: dbReservation.proposito,
+                            createdAt: dbReservation.created_at
+                        };
+                    });
+                    console.log('✅ Reservas cargadas desde Supabase:', reservations.length);
+                }
+
+                
+                await setupRealtimeSubscription();
+
+            } catch (error) {
+                console.error('❌ Error en loadInitialData:', error);
+                showNotification('Error cargando datos iniciales', 'error');
+            }
+        }
+
+        
+        async function setupRealtimeSubscription() {
+            try {
+                const subscription = supabaseClient
+                    .channel('reservas-changes')
+                    .on('postgres_changes', 
+                        { 
+                            event: '*', 
+                            schema: 'public', 
+                            table: 'reservas' 
+                        }, 
+                        async (payload) => {
+                            console.log('🔄 Cambio en tiempo real:', payload);
+                            await handleRealtimeUpdate(payload);
+                        }
+                    )
+                    .subscribe();
+
+                console.log('✅ Suscripción en tiempo real activada');
+                return subscription;
+            } catch (error) {
+                console.error('❌ Error en suscripción en tiempo real:', error);
+            }
+        }
+
+        async function handleRealtimeUpdate(payload) {
+            const { eventType, new: newRecord, old: oldRecord } = payload;
+            
+            switch (eventType) {
+                case 'INSERT':
+                    
+                    if (newRecord.estado === 'confirmada') {
+                        const startMinutes = timeToMinutes(newRecord.hora_inicio.substring(0, 5));
+                        const endMinutes = timeToMinutes(newRecord.hora_fin.substring(0, 5));
+                        const duration = (endMinutes - startMinutes) / 60;
+                        
+                        const newReservation = {
+                            id: newRecord.id,
+                            room: `Sala ${newRecord.sala_codigo}`,
+                            date: newRecord.fecha,
+                            time: newRecord.hora_inicio.substring(0, 5),
+                            duration: duration,
+                            requester: newRecord.solicitante,
+                            purpose: newRecord.proposito,
+                            createdAt: newRecord.created_at
+                        };
+                        reservations.push(newReservation);
+                    }
+                    break;
+                    
+                case 'UPDATE':
+                    
+                    const index = reservations.findIndex(r => r.id === newRecord.id);
+                    if (index !== -1) {
+                        if (newRecord.estado === 'confirmada') {
+                            const startMinutes = timeToMinutes(newRecord.hora_inicio.substring(0, 5));
+                            const endMinutes = timeToMinutes(newRecord.hora_fin.substring(0, 5));
+                            const duration = (endMinutes - startMinutes) / 60;
+                            
+                            reservations[index] = {
+                                id: newRecord.id,
+                                room: `Sala ${newRecord.sala_codigo}`,
+                                date: newRecord.fecha,
+                                time: newRecord.hora_inicio.substring(0, 5),
+                                duration: duration,
+                                requester: newRecord.solicitante,
+                                purpose: newRecord.proposito,
+                                createdAt: newRecord.created_at
+                            };
+                        } else {
+                            
+                            reservations.splice(index, 1);
+                        }
+                    }
+                    break;
+                    
+                case 'DELETE':
+                    
+                    reservations = reservations.filter(r => r.id !== oldRecord.id);
+                    break;
+            }
+            
+            z
+            renderRoomsGrid();
+            renderReservationsList();
+            showNotification('Cambios actualizados en tiempo real', 'success');
+        }
+
+        
+         document.addEventListener('DOMContentLoaded', async function() {
+            console.log('🚀 Iniciando aplicación con Supabase...');
+            
+            try {
+                await loadInitialData();
+                
+                loadSavedTitle();
+                
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('dateFilter').value = today;
+                document.getElementById('reservationDate').value = today;
+                
+                checkHolidayWarning(today);
+                
+                updateRoomSelects();
+                renderRoomsGrid();
+                renderReservationsList();
+                
+                showNotification('Sistema conectado a Supabase correctamente', 'success');
+                
+            } catch (error) {
+                console.error('❌ Error inicializando aplicación:', error);
+                showNotification('Error de conexión con la base de datos', 'error');
+            }
+        });
+
+       
+        async function createReservation(reservationData) {
+            try {
+                // Calcular hora_fin basado en la duración
+                const startMinutes = timeToMinutes(reservationData.time);
+                const endMinutes = startMinutes + (reservationData.duration * 60);
+                const hora_fin = minutesToTime(endMinutes);
+
+                const { data, error } = await supabaseClient
+                    .from('reservas')
+                    .insert([
+                        {
+                            sala_codigo: reservationData.room.replace('Sala ', ''),
+                            fecha: reservationData.date,
+                            hora_inicio: reservationData.time + ':00',
+                            hora_fin: hora_fin + ':00',
+                            solicitante: reservationData.requester,
+                            proposito: reservationData.purpose,
+                            estado: 'confirmada'
+                        }
+                    ])
+                    .select();
+
+                if (error) throw error;
+
+                console.log('✅ Reserva creada en Supabase:', data);
+                return data[0];
+
+            } catch (error) {
+                console.error('❌ Error creando reserva:', error);
+                showNotification('Error creando reserva: ' + error.message, 'error');
+                throw error;
+            }
+        }
+
+        
+        async function cancelReservation(id) {
+            console.log(`🗑️ Iniciando cancelación para la reserva con ID: ${id}`);
+            
+            if (confirm('¿Estás seguro de que deseas cancelar esta reserva?')) {
+                
+                try {
+                    
+                    const { error } = await supabaseClient
+                        .from('reservas')
+                        .update({ estado: 'cancelada' })
+                        .eq('id', id);
+
+                    if (error) throw error;
+
+                    
+                    reservations = reservations.filter(r => r.id !== id);
+                    
+                    
+                    renderRoomsGrid();
+                    renderReservationsList();
+                    
+                    showNotification('Reserva cancelada exitosamente', 'success');
+                    console.log('🎉 Reserva cancelada en Supabase');
+
+                } catch (error) {
+                    console.error('❌ Error cancelando reserva:', error);
+                    showNotification('Error cancelando reserva: ' + error.message, 'error');
+                }
+            }
+        }
+
+        
+        
+        document.getElementById('reservationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            console.log('📝 Creando nueva reserva...');
+            
+            const formData = {
+                room: document.getElementById('roomSelect').value,
+                date: document.getElementById('reservationDate').value,
+                time: document.getElementById('timeSelect').value,
+                duration: parseFloat(document.getElementById('durationSelect').value),
+                requester: document.getElementById('requesterName').value,
+                purpose: document.getElementById('meetingPurpose').value
+            };
+            
+            console.log('📋 Datos de la nueva reserva:', formData);
+            
+            
+            if (isTimeSlotPast(formData.date, formData.time)) {
+                console.log('❌ Horario en el pasado detectado');
+                showNotification('No puedes reservar un horario que ya pasó', 'error');
+                return;
+            }
+            
+            
+            const startMinutes = timeToMinutes(formData.time);
+            const endMinutes = startMinutes + (formData.duration * 60);
+            
+            const hasConflict = reservations.some(reservation => {
+                if (reservation.room !== formData.room || reservation.date !== formData.date) {
+                    return false;
+                }
+                
+                const reservationStart = timeToMinutes(reservation.time);
+                const reservationEnd = reservationStart + (reservation.duration * 60);
+                
+                return (startMinutes < reservationEnd && endMinutes > reservationStart);
+            });
+            
+            if (hasConflict) {
+                console.log('❌ Conflicto de horario detectado');
+                showNotification('Esta sala ya está reservada en ese horario', 'error');
+                return;
+            }
+            
+            try {
+                await createReservation(formData);
+                closeModal();
+                showNotification(`Reserva creada exitosamente por ${formatDuration(formData.duration)}`, 'success');
+                
+            } catch (error) {
+                
+            }
+        });
+
+        
+        function timeToMinutes(time) {
+            const [hours, minutes] = time.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        function minutesToTime(minutes) {
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        function isTimeSlotReserved(room, date, time) {
+            const currentTimeMinutes = timeToMinutes(time);
+            
+            return reservations.some(reservation => {
+                if (reservation.room !== room || reservation.date !== date) {
+                    return false;
+                }
+                
+                const startMinutes = timeToMinutes(reservation.time);
+                const endMinutes = startMinutes + (reservation.duration * 60);
+                
+                return currentTimeMinutes >= startMinutes && currentTimeMinutes < endMinutes;
+            });
+        }
+
+        function isTimeSlotPast(date, time) {
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            
+            if (date > today) return false;
+            if (date < today) return true;
+            
+            if (date === today) {
+                const currentHour = now.getHours();
+                const currentMinute = now.getMinutes();
+                const currentTimeMinutes = currentHour * 60 + currentMinute;
+                const slotTimeMinutes = timeToMinutes(time);
+                
+                return slotTimeMinutes <= (currentTimeMinutes + 30);
+            }
+            
+            return false;
+        }
+
+        
+        function renderRoomsGrid() {
+            
+        }
+
+        function renderReservationsList() {
+            
+        }
+
+        function updateRoomSelects() {
+            
+        }
+
+        
+        function showNotification(message, type) {
+            
+        }
+
+        function showNewReservationModal() {
+            
+        }
+
+        function closeModal() {
+            
+        }
+
+        function filterReservations() {
+            
+        }
+
+        
+
+    </script>
+</body>
+</html>
